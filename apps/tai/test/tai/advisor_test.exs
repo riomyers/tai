@@ -163,7 +163,7 @@ defmodule Tai.AdvisorTest do
   describe ".terminate/2" do
     setup do
       Process.register(self(), :test)
-      callback = fn -> send(:test, :i_have_exited) end
+      callback = fn -> send(:test, :terminate_called) end
 
       pid =
         start_supervised!(
@@ -183,12 +183,20 @@ defmodule Tai.AdvisorTest do
 
     test "is called when terminating process with :normal", %{pid: pid} do
       GenServer.stop(pid)
-      assert_receive :i_have_exited
+      assert_receive :terminate_called
+      assert Process.alive?(pid) == false
     end
 
     test "is called when terminating process with :error", %{pid: pid} do
       GenServer.cast(pid, :i_dont_exist)
-      assert_receive :i_have_exited
+      assert_receive :terminate_called
+      assert Process.alive?(pid) == true
+    end
+
+    test "is not called when killed", %{pid: pid} do
+      Process.exit(pid, :kill)
+      refute_receive :terminate_called
+      assert Process.alive?(pid) == false
     end
   end
 
