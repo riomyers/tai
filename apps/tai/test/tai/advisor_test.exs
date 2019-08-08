@@ -5,6 +5,7 @@ defmodule Tai.AdvisorTest do
   defmodule MyAdvisor do
     use Tai.Advisor
     def handle_inside_quote(_, _, _, _, state), do: {:ok, state.store}
+    def terminate(_reason, %{config: %{callback: callback}}), do: callback.()
   end
 
   describe ".start_link" do
@@ -156,6 +157,38 @@ defmodule Tai.AdvisorTest do
 
       assert_receive {Tai.Event, %Tai.Events.AdvisorOrderUpdatedError{} = event, _}
       assert event.error == %RuntimeError{message: "Callback Error!!!"}
+    end
+  end
+
+  describe ".terminate/2" do
+    setup do
+      Process.register(self(), :test)
+      callback = fn -> send(:test, :i_have_exited) end
+
+      pid =
+        start_supervised!(
+          {MyAdvisor,
+           [
+             group_id: :terminate,
+             advisor_id: :my_advisor,
+             products: [],
+             config: %{callback: callback},
+             store: %{},
+             trades: []
+           ]}
+        )
+
+      %{pid: pid}
+    end
+
+    test "is called when terminating process with :normal", %{pid: pid} do
+      GenServer.stop(pid)
+      assert_receive :i_have_exited
+    end
+
+    test "is called when terminating process with :error", %{pid: pid} do
+      GenServer.cast(pid, :i_dont_exist)
+      assert_receive :i_have_exited
     end
   end
 
