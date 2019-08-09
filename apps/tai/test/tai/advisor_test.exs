@@ -5,20 +5,33 @@ defmodule Tai.AdvisorTest do
   defmodule MyAdvisor do
     use Tai.Advisor
     def handle_inside_quote(_, _, _, _, state), do: {:ok, state.store}
+
     def terminate(_reason, %{config: %{callback: callback}}), do: callback.()
-    def terminate(_reason, _), do: :ok
+
+    def terminate(_reason,
+          group_id: _,
+          advisor_id: _,
+          products: _,
+          config: %{callback: callback},
+          store: _,
+          trades: _
+        ) do
+      callback.()
+    end
+
+    def terminate(_reason, _state), do: :ok
   end
 
   describe ".start_link" do
     test "can initialize run store" do
-      pid = start!(:init_run_store, :my_advisor, store: %{initialized: true})
+      pid = start_advisor_supervised!(:init_run_store, :my_advisor, store: %{initialized: true})
       state = :sys.get_state(pid)
 
       assert state.store.initialized == true
     end
 
     test "can initialize trades" do
-      pid = start!(:init_trades, :my_advisor, trades: [:a])
+      pid = start_advisor_supervised!(:init_trades, :my_advisor, trades: [:a])
       state = :sys.get_state(pid)
 
       assert state.trades == [:a]
@@ -28,7 +41,7 @@ defmodule Tai.AdvisorTest do
   describe ".cast_order_updated/4" do
     setup do
       Process.register(self(), :test)
-      pid = start!(:group_a, :my_advisor)
+      pid = start_advisor_supervised!(:group_a, :my_advisor)
       %{pid: pid}
     end
 
@@ -78,7 +91,7 @@ defmodule Tai.AdvisorTest do
   describe ".cast_order_updated/5" do
     setup do
       Process.register(self(), :test)
-      pid = start!(:group_a, :my_advisor)
+      pid = start_advisor_supervised!(:group_a, :my_advisor)
       %{pid: pid}
     end
 
@@ -133,7 +146,7 @@ defmodule Tai.AdvisorTest do
     setup do
       Process.register(self(), :test)
       callback = fn -> send(:test, :terminate_called) end
-      pid = start!(:terminate, :my_advisor, config: %{callback: callback})
+      pid = start_advisor!(:terminate, :my_advisor, config: %{callback: callback})
       %{pid: pid}
     end
 
@@ -156,7 +169,28 @@ defmodule Tai.AdvisorTest do
     end
   end
 
-  defp start!(group_id, advisor_id, opts \\ []) do
+  defp start_advisor!(group_id, advisor_id, opts) do
+    products = Keyword.get(opts, :products, [])
+    config = Keyword.get(opts, :config, %{})
+    trades = Keyword.get(opts, :trades, [])
+    run_store = Keyword.get(opts, :store, %{})
+
+    start_supervised!({Tai.Events, 1})
+
+    {:ok, pid} =
+      GenServer.start(MyAdvisor,
+        group_id: group_id,
+        advisor_id: advisor_id,
+        products: products,
+        config: config,
+        store: run_store,
+        trades: trades
+      )
+
+    pid
+  end
+
+  defp start_advisor_supervised!(group_id, advisor_id, opts \\ []) do
     products = Keyword.get(opts, :products, [])
     config = Keyword.get(opts, :config, %{})
     trades = Keyword.get(opts, :trades, [])

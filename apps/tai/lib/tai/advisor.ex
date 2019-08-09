@@ -83,11 +83,11 @@ defmodule Tai.Advisor do
       @doc false
       def init(state) do
         Process.flag(:trap_exit, true)
-        {:ok, state, {:continue, :subscribe_to_products}}
+        {:ok, state, {:continue, :started}}
       end
 
       @doc false
-      def handle_continue(:subscribe_to_products, state) do
+      def handle_continue(:started, %State{} = state) do
         state.products
         |> Enum.each(fn p ->
           Tai.PubSub.subscribe([
@@ -98,6 +98,8 @@ defmodule Tai.Advisor do
 
         {:noreply, state}
       end
+
+      def handle_continue(:started, state), do: {:noreply, state}
 
       @doc false
       def handle_info({:order_book_snapshot, venue_id, product_symbol, snapshot}, state) do
